@@ -25,6 +25,9 @@ TITLE, SHORT_DESC, FULL_DESC, CONTACT, CONFIRM = range(5)
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHANNEL_ID = int(os.environ["CHANNEL_ID"])  # e.g. -1001234567890
 ADMIN_IDS = {int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x.strip()}
+# Optional: topic/thread ID inside a forum supergroup. Leave unset for regular channels.
+_thread = os.environ.get("THREAD_ID", "").strip()
+THREAD_ID = int(_thread) if _thread else None
 
 
 # ---------- Basic commands ----------
@@ -148,12 +151,15 @@ async def confirm_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton("📋 View Full Details", callback_data=f"view:{job_id}"),
     ]])
     try:
-        msg = await context.bot.send_message(
+        send_kwargs = dict(
             chat_id=CHANNEL_ID,
             text=channel_text,
             reply_markup=kb,
             parse_mode=ParseMode.MARKDOWN,
         )
+        if THREAD_ID is not None:
+            send_kwargs["message_thread_id"] = THREAD_ID
+        msg = await context.bot.send_message(**send_kwargs)
         db.set_message_id(job_id, msg.message_id)
         await query.edit_message_text(
             f"✅ *Posted!* Job ID: `{job_id}`\n\nUse /myjobs to see your posts.",
