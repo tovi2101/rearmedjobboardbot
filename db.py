@@ -29,20 +29,25 @@ def init_db():
                 title       TEXT NOT NULL,
                 short_desc  TEXT NOT NULL,
                 full_desc   TEXT NOT NULL,
+                budget      TEXT,
                 contact     TEXT NOT NULL,
                 message_id  INTEGER,
                 created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_user ON jobs(user_id)")
+        # Migration for existing deployments that pre-date the budget column
+        cols = {row["name"] for row in c.execute("PRAGMA table_info(jobs)").fetchall()}
+        if "budget" not in cols:
+            c.execute("ALTER TABLE jobs ADD COLUMN budget TEXT")
 
 
-def create_job(user_id, username, title, short_desc, full_desc, contact) -> int:
+def create_job(user_id, username, title, short_desc, full_desc, budget, contact) -> int:
     with _conn() as c:
         cur = c.execute(
-            "INSERT INTO jobs (user_id, username, title, short_desc, full_desc, contact) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (user_id, username, title, short_desc, full_desc, contact),
+            "INSERT INTO jobs (user_id, username, title, short_desc, full_desc, budget, contact) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (user_id, username, title, short_desc, full_desc, budget, contact),
         )
         return cur.lastrowid
 
