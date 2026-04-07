@@ -20,7 +20,7 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 # Conversation states
-TITLE, SHORT_DESC, FULL_DESC, CONTACT, CONFIRM = range(5)
+TITLE, SHORT_DESC, FULL_DESC, BUDGET, CONTACT, CONFIRM = range(6)
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHANNEL_ID = int(os.environ["CHANNEL_ID"])  # e.g. -1001234567890
@@ -57,7 +57,7 @@ async def post_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please DM me to post a job.")
         return ConversationHandler.END
     await update.message.reply_text(
-        "📝 *Let's post a job.*\n\nStep 1/4 — Send the *job title* (max 100 chars):",
+        "📝 *Let's post a job.*\n\nStep 1/5 — Send the *job title* (max 100 chars):",
         parse_mode=ParseMode.MARKDOWN,
     )
     return TITLE
@@ -70,7 +70,7 @@ async def post_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return TITLE
     context.user_data["title"] = text
     await update.message.reply_text(
-        "Step 2/4 — Send a *short description* (max 200 chars).\n"
+        "Step 2/5 — Send a *short description* (max 200 chars).\n"
         "_This is what members see in the channel notification._",
         parse_mode=ParseMode.MARKDOWN,
     )
@@ -84,7 +84,7 @@ async def post_short_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return SHORT_DESC
     context.user_data["short_desc"] = text
     await update.message.reply_text(
-        "Step 3/4 — Send the *full job details* (requirements, pay, location, etc — max 3000 chars):",
+        "Step 3/5 — Send the *full job details* (requirements, timeline, location, etc — max 3000 chars):",
         parse_mode=ParseMode.MARKDOWN,
     )
     return FULL_DESC
@@ -97,7 +97,20 @@ async def post_full_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return FULL_DESC
     context.user_data["full_desc"] = text
     await update.message.reply_text(
-        "Step 4/4 — Send *contact info* (email, @handle, link, etc):",
+        "Step 4/5 — Send the *budget* (e.g. `$2000`, `$50/hr`, `€1k-2k`, `Negotiable` — max 50 chars):",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    return BUDGET
+
+
+async def post_budget(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    if len(text) > 50:
+        await update.message.reply_text("Too long. Max 50 chars — try again:")
+        return BUDGET
+    context.user_data["budget"] = text
+    await update.message.reply_text(
+        "Step 5/5 — Send *contact info* (email, @handle, link, etc):",
         parse_mode=ParseMode.MARKDOWN,
     )
     return CONTACT
@@ -113,7 +126,8 @@ async def post_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     d = context.user_data
     preview = (
         f"*Preview:*\n\n"
-        f"💼 *{_esc(d['title'])}*\n\n"
+        f"💼 *{_esc(d['title'])}*\n"
+        f"💰 *Budget:* {_esc(d['budget'])}\n\n"
         f"{_esc(d['short_desc'])}\n\n"
         f"📄 *Details:*\n{_esc(d['full_desc'])}\n\n"
         f"📞 *Contact:* {_esc(d['contact'])}"
@@ -143,10 +157,15 @@ async def confirm_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
         title=d["title"],
         short_desc=d["short_desc"],
         full_desc=d["full_desc"],
+        budget=d["budget"],
         contact=d["contact"],
     )
 
-    channel_text = f"💼 *{_esc(d['title'])}*\n\n{_esc(d['short_desc'])}"
+    channel_text = (
+        f"💼 *{_esc(d['title'])}*\n"
+        f"💰 *Budget:* {_esc(d['budget'])}\n\n"
+        f"{_esc(d['short_desc'])}"
+    )
     kb = InlineKeyboardMarkup([[
         InlineKeyboardButton("📋 View Full Details", callback_data=f"view:{job_id}"),
     ]])
@@ -188,7 +207,8 @@ async def handle_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if action == "view":
         text = (
-            f"💼 *{_esc(job['title'])}*\n\n"
+            f"💼 *{_esc(job['title'])}*\n"
+            f"💰 *Budget:* {_esc(job.get('budget') or '—')}\n\n"
             f"{_esc(job['short_desc'])}\n\n"
             f"📄 *Details:*\n{_esc(job['full_desc'])}\n\n"
             f"📞 *Contact:* {_esc(job['contact'])}\n\n"
@@ -198,7 +218,11 @@ async def handle_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("🔙 Collapse", callback_data=f"hide:{job_id}"),
         ]])
     else:  # hide
-        text = f"💼 *{_esc(job['title'])}*\n\n{_esc(job['short_desc'])}"
+        text = (
+            f"💼 *{_esc(job['title'])}*\n"
+            f"💰 *Budget:* {_esc(job.get('budget') or '—')}\n\n"
+            f"{_esc(job['short_desc'])}"
+        )
         kb = InlineKeyboardMarkup([[
             InlineKeyboardButton("📋 View Full Details", callback_data=f"view:{job_id}"),
         ]])
@@ -269,6 +293,7 @@ def main():
             TITLE:      [MessageHandler(filters.TEXT & ~filters.COMMAND, post_title)],
             SHORT_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, post_short_desc)],
             FULL_DESC:  [MessageHandler(filters.TEXT & ~filters.COMMAND, post_full_desc)],
+            BUDGET:     [MessageHandler(filters.TEXT & ~filters.COMMAND, post_budget)],
             CONTACT:    [MessageHandler(filters.TEXT & ~filters.COMMAND, post_contact)],
             CONFIRM:    [CallbackQueryHandler(confirm_post, pattern="^(confirm_post|cancel_post)$")],
         },
